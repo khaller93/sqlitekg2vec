@@ -1,0 +1,286 @@
+import logging
+from os import remove
+from os.path import exists
+from sqlite3 import connect, Connection
+from typing import Iterable, Tuple, List, Set
+
+from pyrdf2vec.typings import Hop, Literals, Entities
+from pyrdf2vec.graphs import Vertex
+
+EntityIDs = List[str]
+
+
+class _Importer:
+    """ importer of KG into the SQLite database """
+
+    def __init__(self, con: Connection, skip_predicates: Set[str] = None):
+        """ creates a new importer using the given connection. This importer
+        allows to import the triples of a KG.
+
+        :param con: connection which shall be used for the import.
+        :param skip_predicates: a set of predicates, which makes all the
+        statements with one of these predicates to be ignored.
+        """
+        self._con = con
+        self._skip_predicates = skip_predicates \
+            if skip_predicates is not None else set([])
+        self._cursor = con.cursor()
+        self._entity_map = {}
+
+    def _create_schema(self) -> None:
+        """ creates the basic schema of the SQLite database. """
+        self._cursor.execute('''
+CREATE TABLE resource(
+    resource_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    iri NOT NULL UNIQUE
+);      ''')
+        self._cursor.execute('''
+CREATE TABLE statement(
+    no INTEGER PRIMARY KEY AUTOINCREMENT,
+    subj INTEGER NOT NULL,
+    pred INTEGER NOT NULL,
+    obj INTEGER NOT NULL,
+    FOREIGN KEY (subj) REFERENCES resource (resource_id),
+    FOREIGN KEY (pred) REFERENCES resource (resource_id),
+    FOREIGN KEY (obj) REFERENCES resource (resource_id),
+    UNIQUE(subj,pred,obj)
+);      ''')
+
+    def _insert_entity(self, entity: str) -> int:
+        """ inserts the given entity into the database, if it doesn't already
+        exist. This method returns the ID of this entity regardless of whether
+        the entity was newly inserted or it already existed.
+
+        :param entity: string ID of the entity that shall be inserted.
+        :return: the unique integer ID of the given entity.
+        """
+        if entity in self._entity_map:
+            return self._entity_map[entity]
+        else:
+            self._cursor.execute('INSERT INTO resource (iri) VALUES (?);',
+                                 (entity,))
+            key = self._cursor.execute('SELECT last_insert_rowid();') \
+                .fetchone()[0]
+            self._entity_map[entity] = int(key)
+            return key
+
+    def import_kg(self, data: Iterable[Tuple[str, str, str]]) -> None:
+        """ inserts all the statements into the database.
+
+        :param data: a sequence of statements that shall be imported.
+        """
+        for subj, pred, obj in data:
+            if pred in self._skip_predicates:
+                continue
+            subj_key = self._insert_entity(subj)
+            pred_key = self._insert_entity(pred)
+            obj_key = self._insert_entity(obj)
+            self._cursor.execute('INSERT INTO statement (subj, pred, obj) '
+                                 'VALUES (?, ?, ?);',
+                                 (subj_key, pred_key, obj_key))
+
+    def __enter__(self):
+        self._create_schema()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            if self._con is not None:
+                self._con.commit()
+        self._entity_map = None
+
+
+class _QueryManager:
+    """ this class maintains SQL queries """
+
+    entities_count_query = '''
+SELECT count(*)
+FROM (SELECT subj as id FROM statement UNION SELECT obj as id FROM statement);
+'''
+
+    predicates_count_query = 'SELECT count(distinct pred) FROM statement;'
+
+    statements_count_query = 'SELECT count(*) FROM statement;'
+
+    all_entities_query = '''
+SELECT id, iri
+FROM (SELECT subj as id FROM statement UNION
+      SELECT obj as id FROM statement) entity
+JOIN resource ON entity.id = resource.resource_id;
+'''
+
+    hops_query = {
+        'forward': 'SELECT pred, obj FROM statement WHERE subj = ?;',
+        'backward': 'SELECT pred, subj FROM statement WHERE obj = ?;',
+    }
+
+
+class SQLiteKG:
+    """ represents a Knowledge Graph persisted in a SQLite database """
+
+    def __init__(self, data: Iterable[Tuple[str, str, str]],
+                 *,
+                 skip_predicates: Iterable[str] = None,
+                 db_file_path: str = 'tmp.db'):
+        """ creates a new SQLite KG for the given data. The database is
+        persisted in the specified file path.
+
+        :param data: an iterable stream of triples.
+        :param skip_predicates: a list of predicates, which makes all the
+        statements with one of these predicates to be ignored.
+        :param db_file_path: path to the file that shall hold the KG on disk.
+        """
+        self._data = data
+        self._skip_predicates = set(skip_predicates) \
+            if skip_predicates is not None else set([])
+        self._db_file_path = db_file_path
+        self._con: Connection
+
+    @property
+    def _is_remote(self) -> bool:
+        return False
+
+    @property
+    def skip_verify(self) -> bool:
+        return True
+
+    @property
+    def entity_count(self):
+        """ count of entities (occur as subject or object) in this KG. """
+        cursor = self._con.cursor()
+        try:
+            return int(cursor.execute(_QueryManager.entities_count_query)
+                       .fetchone()[0])
+        finally:
+            cursor.close()
+
+    @property
+    def predicate_count(self):
+        """ count of distinct predicates in the KG. """
+        cursor = self._con.cursor()
+        try:
+            return int(cursor.execute(_QueryManager.predicates_count_query)
+                       .fetchone()[0])
+        finally:
+            cursor.close()
+
+    @property
+    def statement_count(self):
+        """ count of statements in the KG. """
+        cursor = self._con.cursor()
+        try:
+            return int(cursor.execute(_QueryManager.statements_count_query)
+                       .fetchone()[0])
+        finally:
+            cursor.close()
+
+    def entities(self, restricted_to: Entities = None) -> EntityIDs:
+        """ returns all the entities, which occur as either a subject or object
+        in a statement of the KG. No entity will be returned twice.
+
+        :param restricted_to: the names (e.g. IRI) of the resources that shall
+        be exclusively considered. If `None`, then all entities will be
+        returned. It is `None` by default.
+        :return: a list with all entity IDs.
+        """
+        cursor = self._con.cursor()
+        try:
+            result = cursor.execute(_QueryManager.all_entities_query)
+            entities = [(str(row[0]), str(row[1])) for row in result]
+            if restricted_to is None:
+                return [e[0] for e in entities]
+            else:
+                restriction = set(restricted_to)
+                return [e[0] for e in entities if e[1] in restriction]
+        finally:
+            cursor.close()
+
+    def get_hops(self, vertex: 'Vertex',
+                 is_reverse: bool = False) -> List['Hop']:
+        """ gets the direct hops of specified vertex as a list.
+
+        :param vertex: name of the vertex for which to get the hops.
+        :param is_reverse: If `True`, this function gets the parent nodes of a
+        vertex (backward links). Otherwise, get the child nodes for this
+        vertex (forward links). It is `False` by default.
+        :return: the hops of a vertex in (predicate, object) form.
+        """
+        cursor = self._con.cursor()
+        try:
+            link_type = 'backward' if is_reverse else 'forward'
+            query = _QueryManager.hops_query[link_type]
+            result = cursor.execute(query, (int(vertex.name),))
+            hops = []
+            for row in result:
+                hops.append((Vertex(name=str(row[0]), predicate=True),
+                             Vertex(name=str(row[1]))))
+            logging.debug('Detected %d (%s) hops for vertex "%s"',
+                          len(hops), link_type, vertex.name)
+            return hops
+        finally:
+            cursor.close()
+
+    def get_neighbors(self, vertex: Vertex,
+                      is_reverse: bool = False) -> Set[Vertex]:
+        """ gets the children or parents neighbors of a vertex.
+
+        :param vertex: name of the vertex for which to get the neighbours.
+        :param is_reverse: If `True`, this function gets the parent neighbours
+        of a vertex (backward links). Otherwise, get the child neighbours for
+        this vertex (forward links). It is `False` by default.
+        :return: children or parents neighbors of a vertex.
+        """
+        raise NotImplementedError()
+
+    def get_literals(self, entities: Entities, verbose: int = 0) -> Literals:
+        """ gets the literals for one or more entities for all the predicates
+        chain.
+
+        :param entities: entity or entities for which to get the literals.
+        :param verbose: specifies the verbosity level. `0` does not display
+        anything; `1` display of the progress of extraction and training of
+        walks; `2` debugging. It is `0` by default.
+        :return: list that contains literals for each entity.
+        """
+        raise NotImplementedError()
+
+    def get_pliterals(self, entity: str, preds: List[str]) -> List[str]:
+        """ gets the literals for an entity and a local KG based on a chain of
+        predicates.
+
+        :param entity: entity for which to get the predicate literals.
+        :param preds: chain of predicates.
+        :return: literals for the given entity.
+        """
+        raise NotImplementedError()
+
+    def is_exist(self, entities: Entities) -> bool:
+        """ checks whether all provided entities exists in the KG.
+
+        :param entities: entities for which to check the existence.
+        :return: `True`, if all the entities exists, `False` otherwise.
+        """
+        raise NotImplementedError()
+
+    def __enter__(self):
+        # remove db file if it exists
+        if exists(self._db_file_path):
+            remove(self._db_file_path)
+        # import the KG
+        self._con = connect(self._db_file_path)
+        logging.info('Importing statements into SQLite KG  with {'
+                     'skip_predicates: %s}, stored at the file "%s"'
+                     % (self._db_file_path, [x for x in self._skip_predicates]))
+        with _Importer(self._con,
+                       skip_predicates=self._skip_predicates) as importer:
+            importer.import_kg(self._data)
+        logging.info('Imported KG with {entities:%d, predicates:%d, '
+                     'statements: %d}' % (self.entity_count,
+                                          self.predicate_count,
+                                          self.statement_count))
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._con.close()
+        if exists(self._db_file_path) and False:
+            remove(self._db_file_path)
