@@ -1,24 +1,27 @@
-# SQLiteKG for pyRDF2Vec
+# sqlitekg2vec
 
-SQLiteKG implements the `KG` class from [pyRDF2Vec](https://github.com/IBCNServices/pyRDF2Vec),
-which is a popular library to train the RDF2Vec model for knowledge graphs. It
-aims to be less memory hungry than constructing a KG from scratch using pyRDF2Vec,
-or running a local/remote triplestore. 
+sqlitekg2vec is an extension of
+[pyRDF2Vec](https://github.com/IBCNServices/pyRDF2Vec), which is a popular
+library to train RDF2Vec models for RDF-based knowledge graphs. It aims to be
+less memory hungry than building KGs from scratch using pyRDF2Vec, or running a
+local/remote triplestore.
 
-SQLiteKG creates a local SQLite database, and all the statements of a knowledge
-graph gets loaded into one big SQL table. The neighbours and hops for nodes in
-the knowledge graph get gathered with simple SQL queries.
+
+sqlitekg2vec creates a local SQLite database with a single big table for all the
+statements of a knowledge graph, and an additional table as an index of KG
+entity names to integer IDs. This SQLite database will be referenced as SQLite
+KG in the remaining documentation.
 
 ## Usage
 
 ```python
-import sqlitekg
+import sqlitekg2vec
 
 from pyrdf2vec import RDF2VecTransformer
 from pyrdf2vec.embedders import Word2Vec
 from pyrdf2vec.walkers import RandomWalker
 
-with sqlitekg.open_from_pykeen_dataset('dbpedia50', combined=True) as kg:
+with sqlitekg2vec.open_from_pykeen_dataset('dbpedia50', combined=True) as kg:
     transformer = RDF2VecTransformer(
         Word2Vec(epochs=100),
         walkers=[RandomWalker(max_walks=200,
@@ -46,9 +49,9 @@ In the following code snippet, the `db100k` dataset, which is a subsampling of
 DBpedia, is used to construct an SQLite KG.
 
 ```python
-import sqlitekg
+import sqlitekg2vec
 
-with sqlitekg.open_from_pykeen_dataset('db100k', combined=True) as kg:
+with sqlitekg2vec.open_from_pykeen_dataset('db100k', combined=True) as kg:
     # ...
     pass
 ```
@@ -70,9 +73,10 @@ The following code snippet creates a new SQLite KG instance from the statements
 of the specified TSV file, which has been compressed using GZIP.
 
 ```python
-import sqlitekg
+import sqlitekg2vec
 
-with sqlitekg.open_from_tsv_file('statements.tsv.gz', compression='gzip') as kg:
+with sqlitekg2vec.open_from_tsv_file('statements.tsv.gz',
+                                     compression='gzip') as kg:
     # ...
     pass
 ```
@@ -96,10 +100,10 @@ and object must be specified in this particular order.
 The following code snippet creates a new SQLite KG instance from a dataframe.
 
 ```python
-import sqlitekg
+import sqlitekg2vec
 
-with sqlitekg.open_from_dataframe(df,
-                                  column_names=('subj', 'pred', 'obj')) as kg:
+with sqlitekg2vec.open_from_dataframe(df, column_names=(
+        'subj', 'pred', 'obj')) as kg:
     # ...
     pass
 ```
