@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Iterable, Sequence, Union, Tuple, Hashable
 
 from pykeen.datasets import get_dataset
 
-from sqlitekg.kg import SQLiteKG
+from sqlitekg2vec.kg import SQLiteKG
 
 if TYPE_CHECKING:
     from pandas import DataFrame
