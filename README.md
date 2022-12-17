@@ -31,6 +31,7 @@ with sqlitekg.open_from_pykeen_dataset('dbpedia50', combined=True) as kg:
     # train RDF2Vec
     ent = kg.entities()
     embeddings, _ = transformer.fit_transform(kg, ent)
+    print(kg.pack(ent, embeddings))
 ```
 
 ### Create from PyKeen dataset
