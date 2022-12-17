@@ -1,9 +1,13 @@
 import logging
+import operator
+from functools import partial
 from os import remove
 from os.path import exists
 from sqlite3 import connect, Connection
 from typing import Iterable, Tuple, List, Set, Any, Sequence
 
+from cachetools import cachedmethod, FIFOCache
+from cachetools.keys import hashkey
 from pyrdf2vec.typings import Hop, Literals, Entities, Embeddings
 from pyrdf2vec.graphs import Vertex
 
@@ -122,6 +126,7 @@ class SQLiteKG:
                  *,
                  skip_verify: bool = False,
                  skip_predicates: Iterable[str] = None,
+                 cache_size: int = 4096,
                  db_file_path: str = 'tmp.db'):
         """ creates a new SQLite KG for the given data. The database is
         persisted in the specified file path.
@@ -139,6 +144,7 @@ class SQLiteKG:
         self._skip_predicates = set(skip_predicates) \
             if skip_predicates is not None else set([])
         self._db_file_path = db_file_path
+        self._cache = FIFOCache(maxsize=cache_size)
         self._con: Connection
 
     @property
@@ -240,6 +246,9 @@ class SQLiteKG:
                           predicate=True)
             yield pred, other_vertex
 
+    @cachedmethod(
+        operator.attrgetter("_cache"), key=partial(hashkey, "get_hops")
+    )
     def get_hops(self, vertex: 'Vertex',
                  is_reverse: bool = False) -> List['Hop']:
         """ gets the direct hops of specified vertex as a list.

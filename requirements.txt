@@ -1,3 +1,4 @@
 pykeen>=1.9.0
 pandas>=1.4.4
 pyrdf2vec>=0.2.3
+cachetools<5.0.0
