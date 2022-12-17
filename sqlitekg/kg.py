@@ -2,7 +2,7 @@ import logging
 from os import remove
 from os.path import exists
 from sqlite3 import connect, Connection
-from typing import Iterable, Tuple, List, Set
+from typing import Iterable, Tuple, List, Set, Any
 
 from pyrdf2vec.typings import Hop, Literals, Entities
 from pyrdf2vec.graphs import Vertex
@@ -196,6 +196,28 @@ class SQLiteKG:
         finally:
             cursor.close()
 
+    @staticmethod
+    def _parse_hops(vertex: Vertex,
+                    result: Iterable[Tuple[Any, Any]],
+                    is_reverse: bool = False) -> Iterable['Hop']:
+        """ parses the results from the SQL query that is fetching the direct
+        hops for the specified vertex.
+
+        :param vertex: for which the query result was returned.
+        :param result: the result of the forward or backward query.
+        :param is_reverse: If `True`, this function assumes that the result of
+        the backward query was passed, otherwise the forward result, if `False`.
+        It is `False` by default.
+        :return: the extracted direct hops in proper format.
+        """
+        for row in result:
+            other_vertex = Vertex(name=str(row[1]))
+            pred = Vertex(name=str(row[0]),
+                          vprev=other_vertex if is_reverse else vertex,
+                          vnext=vertex if is_reverse else other_vertex,
+                          predicate=True)
+            yield pred, other_vertex
+
     def get_hops(self, vertex: 'Vertex',
                  is_reverse: bool = False) -> List['Hop']:
         """ gets the direct hops of specified vertex as a list.
@@ -211,10 +233,8 @@ class SQLiteKG:
             link_type = 'backward' if is_reverse else 'forward'
             query = _QueryManager.hops_query[link_type]
             result = cursor.execute(query, (int(vertex.name),))
-            hops = []
-            for row in result:
-                hops.append((Vertex(name=str(row[0]), predicate=True),
-                             Vertex(name=str(row[1]))))
+            hops = [hop for hop in self._parse_hops(vertex, result,
+                                                    is_reverse)]
             logging.debug('Detected %d (%s) hops for vertex "%s"',
                           len(hops), link_type, vertex.name)
             return hops
@@ -231,7 +251,16 @@ class SQLiteKG:
         this vertex (forward links). It is `False` by default.
         :return: children or parents neighbors of a vertex.
         """
-        raise NotImplementedError()
+        cursor = self._con.cursor()
+        try:
+            link_type = 'backward' if is_reverse else 'forward'
+            query = _QueryManager.hops_query[link_type]
+            result = cursor.execute(query, (int(vertex.name),))
+            return set([pred for pred, _ in self._parse_hops(vertex,
+                                                             result,
+                                                             is_reverse)])
+        finally:
+            cursor.close()
 
     def get_literals(self, entities: Entities, verbose: int = 0) -> Literals:
         """ gets the literals for one or more entities for all the predicates
