@@ -120,17 +120,22 @@ class SQLiteKG:
 
     def __init__(self, data: Iterable[Tuple[str, str, str]],
                  *,
+                 skip_verify: bool = False,
                  skip_predicates: Iterable[str] = None,
                  db_file_path: str = 'tmp.db'):
         """ creates a new SQLite KG for the given data. The database is
         persisted in the specified file path.
 
         :param data: an iterable stream of triples.
+        :param skip_verify: `False`, if it shall be checked whether the
+        specified list of entities (for training) are actually part of this
+        knowledge graph. Otherwise, it is `True`. It is `False` by default.
         :param skip_predicates: a list of predicates, which makes all the
         statements with one of these predicates to be ignored.
         :param db_file_path: path to the file that shall hold the KG on disk.
         """
         self._data = data
+        self.skip_verify = skip_verify
         self._skip_predicates = set(skip_predicates) \
             if skip_predicates is not None else set([])
         self._db_file_path = db_file_path
@@ -139,10 +144,6 @@ class SQLiteKG:
     @property
     def _is_remote(self) -> bool:
         return False
-
-    @property
-    def skip_verify(self) -> bool:
-        return True
 
     @property
     def entity_count(self):
@@ -260,7 +261,11 @@ class SQLiteKG:
         :param entities: entities for which to check the existence.
         :return: `True`, if all the entities exists, `False` otherwise.
         """
-        raise NotImplementedError()
+        ent_in_kg = set(self.entities())
+        for entity in entities:
+            if entity not in ent_in_kg:
+                return False
+        return True
 
     def __enter__(self):
         # remove db file if it exists
