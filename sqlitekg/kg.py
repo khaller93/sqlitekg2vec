@@ -2,9 +2,9 @@ import logging
 from os import remove
 from os.path import exists
 from sqlite3 import connect, Connection
-from typing import Iterable, Tuple, List, Set, Any
+from typing import Iterable, Tuple, List, Set, Any, Sequence
 
-from pyrdf2vec.typings import Hop, Literals, Entities
+from pyrdf2vec.typings import Hop, Literals, Entities, Embeddings
 from pyrdf2vec.graphs import Vertex
 
 EntityIDs = List[str]
@@ -193,6 +193,28 @@ class SQLiteKG:
             else:
                 restriction = set(restricted_to)
                 return [e[0] for e in entities if e[1] in restriction]
+        finally:
+            cursor.close()
+
+    def pack(self, entities: Entities,
+             embeddings: Embeddings) -> Sequence[Tuple[str, str]]:
+        """ packs the entities with their embeddings.
+
+        :param entities: IDs of the entities with which the embeddings shall be
+        packed.
+        :param embeddings: which shall be packed with the name of the entity.
+        :return: a list of the embeddings with the corresponding name of the
+        entity.
+        """
+        if len(entities) != len(embeddings):
+            raise ValueError('list of entities must be the same size as list '
+                             'of embeddings')
+        cursor = self._con.cursor()
+        try:
+            result = cursor.execute(_QueryManager.all_entities_query)
+            entity_map = {int(row[0]): str(row[1]) for row in result}
+            return [(entity_map[int(entityID)], embedding) for
+                    entityID, embedding in zip(entities, embeddings)]
         finally:
             cursor.close()
 
