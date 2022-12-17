@@ -272,17 +272,8 @@ class SQLiteKG:
         walks; `2` debugging. It is `0` by default.
         :return: list that contains literals for each entity.
         """
-        raise NotImplementedError()
-
-    def get_pliterals(self, entity: str, preds: List[str]) -> List[str]:
-        """ gets the literals for an entity and a local KG based on a chain of
-        predicates.
-
-        :param entity: entity for which to get the predicate literals.
-        :param preds: chain of predicates.
-        :return: literals for the given entity.
-        """
-        raise NotImplementedError()
+        logging.warning('SQLite KG doesn\'t support literals')
+        return []
 
     def is_exist(self, entities: Entities) -> bool:
         """ checks whether all provided entities exists in the KG.
