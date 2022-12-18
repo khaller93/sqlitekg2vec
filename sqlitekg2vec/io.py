@@ -4,8 +4,6 @@ import gzip
 from io import TextIOWrapper
 from typing import TYPE_CHECKING, Iterable, Sequence, Union, Tuple, Hashable
 
-from pykeen.datasets import get_dataset
-
 from sqlitekg2vec.kg import SQLiteKG
 
 if TYPE_CHECKING:
@@ -69,6 +67,8 @@ def open_from_pykeen_dataset(dataset: Union[str, 'Dataset'],
     :param db_file_path: path to the file that shall hold the KG on disk.
     :return: a new SQLiteKG instance for the given KG.
     """
+    from pykeen.datasets import get_dataset
+
     ds = get_dataset(dataset=dataset) if isinstance(dataset, str) else dataset
     if combined:
         return open_from_triples_factory([ds.training, ds.testing,
