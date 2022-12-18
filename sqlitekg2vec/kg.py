@@ -380,5 +380,5 @@ class SQLiteKG:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._con.close()
-        if exists(self._db_file_path) and False:
+        if exists(self._db_file_path):
             remove(self._db_file_path)
