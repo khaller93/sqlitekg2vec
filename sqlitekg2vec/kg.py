@@ -4,20 +4,25 @@ from functools import partial
 from os import remove
 from os.path import exists
 from sqlite3 import connect, Connection
-from typing import Iterable, Tuple, List, Set, Any, Sequence
+from typing import Iterable, Tuple, List, Set, Any, Sequence, Union
 
 from cachetools import cachedmethod, FIFOCache
 from cachetools.keys import hashkey
 from pyrdf2vec.typings import Hop, Literals, Entities, Embeddings
 from pyrdf2vec.graphs import Vertex
 
-EntityIDs = List[str]
+EntityName = str
+EntityNames = List[EntityName]
+EntityID = Union[int, str]
+EntityIDs = List[EntityID]
+Triple = Tuple[EntityName, EntityName, EntityName]
 
 
 class _Importer:
     """ importer of KG into the SQLite database """
 
-    def __init__(self, con: Connection, skip_predicates: Set[str] = None):
+    def __init__(self, con: Connection,
+                 skip_predicates: Set[EntityName] = None):
         """ creates a new importer using the given connection. This importer
         allows to import the triples of a KG.
 
@@ -50,12 +55,12 @@ CREATE TABLE statement(
     UNIQUE(subj,pred,obj)
 );      ''')
 
-    def _insert_entity(self, entity: str) -> int:
+    def _insert_entity(self, entity: EntityName) -> int:
         """ inserts the given entity into the database, if it doesn't already
         exist. This method returns the ID of this entity regardless of whether
         the entity was newly inserted or it already existed.
 
-        :param entity: string ID of the entity that shall be inserted.
+        :param entity: name of the entity that shall be inserted.
         :return: the unique integer ID of the given entity.
         """
         if entity in self._entity_map:
@@ -97,6 +102,10 @@ CREATE TABLE statement(
 class _QueryManager:
     """ this class maintains SQL queries """
 
+    entity_id_query = 'SELECT resource_id FROM resource WHERE iri = ?;'
+
+    entity_name_query = 'SELECT iri FROM resource WHERE resource_id = ?;'
+
     entities_count_query = '''
 SELECT count(*)
 FROM (SELECT subj as id FROM statement UNION SELECT obj as id FROM statement);
@@ -122,7 +131,7 @@ JOIN resource ON entity.id = resource.resource_id;
 class SQLiteKG:
     """ represents a Knowledge Graph persisted in a SQLite database """
 
-    def __init__(self, data: Iterable[Tuple[str, str, str]],
+    def __init__(self, data: Iterable[Triple],
                  *,
                  skip_verify: bool = False,
                  skip_predicates: Iterable[str] = None,
@@ -137,6 +146,7 @@ class SQLiteKG:
         knowledge graph. Otherwise, it is `True`. It is `False` by default.
         :param skip_predicates: a list of predicates, which makes all the
         statements with one of these predicates to be ignored.
+        :param cache_size: size of the cache. It holds 4096 entries by default.
         :param db_file_path: path to the file that shall hold the KG on disk.
         """
         self._data = data
@@ -152,7 +162,7 @@ class SQLiteKG:
         return False
 
     @property
-    def entity_count(self):
+    def entity_count(self) -> int:
         """ count of entities (occur as subject or object) in this KG. """
         cursor = self._con.cursor()
         try:
@@ -162,7 +172,7 @@ class SQLiteKG:
             cursor.close()
 
     @property
-    def predicate_count(self):
+    def predicate_count(self) -> int:
         """ count of distinct predicates in the KG. """
         cursor = self._con.cursor()
         try:
@@ -172,7 +182,7 @@ class SQLiteKG:
             cursor.close()
 
     @property
-    def statement_count(self):
+    def statement_count(self) -> int:
         """ count of statements in the KG. """
         cursor = self._con.cursor()
         try:
@@ -181,7 +191,39 @@ class SQLiteKG:
         finally:
             cursor.close()
 
-    def entities(self, restricted_to: Entities = None) -> EntityIDs:
+    def id(self, entity_name: EntityName) -> Union[EntityID, None]:
+        """ returns the integer ID of the entity in form of a string.
+
+        :param entity_name: name of the entity for which to get the ID.
+        :return: the integer ID of the entity in form of a string, or `None`,
+        if no entity with such a name could be found.
+        """
+        cursor = self._con.cursor()
+        try:
+            result = cursor.execute(_QueryManager.entity_id_query,
+                                    (entity_name,))
+            entity_id_tp = result.fetchone()
+            return None if entity_id_tp is None else str(entity_id_tp[0])
+        finally:
+            cursor.close()
+
+    def from_id(self, entity_id: EntityID) -> Union[EntityName, None]:
+        """ returns the name of the entity in form of a string.
+
+        :param entity_id: ID of the entity for which to get the name.
+        :return: the integer ID of the entity in form of a string, or `None`, if
+        no entity with such a ID could be found.
+        """
+        cursor = self._con.cursor()
+        try:
+            result = cursor.execute(_QueryManager.entity_name_query,
+                                    (int(entity_id),))
+            entity_name_tp = result.fetchone()
+            return None if entity_name_tp is None else entity_name_tp[0]
+        finally:
+            cursor.close()
+
+    def entities(self, restricted_to: EntityNames = None) -> EntityIDs:
         """ returns all the entities, which occur as either a subject or object
         in a statement of the KG. No entity will be returned twice.
 
@@ -202,8 +244,8 @@ class SQLiteKG:
         finally:
             cursor.close()
 
-    def pack(self, entities: Entities,
-             embeddings: Embeddings) -> Sequence[Tuple[str, str]]:
+    def pack(self, entities: EntityIDs,
+             embeddings: Embeddings) -> Sequence[Tuple[EntityName, str]]:
         """ packs the entities with their embeddings.
 
         :param entities: IDs of the entities with which the embeddings shall be
@@ -293,7 +335,7 @@ class SQLiteKG:
         finally:
             cursor.close()
 
-    def get_literals(self, entities: Entities, verbose: int = 0) -> Literals:
+    def get_literals(self, entities: EntityIDs, verbose: int = 0) -> Literals:
         """ gets the literals for one or more entities for all the predicates
         chain.
 
@@ -306,15 +348,15 @@ class SQLiteKG:
         logging.warning('SQLite KG doesn\'t support literals')
         return []
 
-    def is_exist(self, entities: Entities) -> bool:
-        """ checks whether all provided entities exists in the KG.
+    def is_exist(self, entities: EntityIDs) -> bool:
+        """ checks whether all provided entities exist in the KG.
 
-        :param entities: entities for which to check the existence.
+        :param entities: IDs of the entities for which to check the existence.
         :return: `True`, if all the entities exists, `False` otherwise.
         """
-        ent_in_kg = set(self.entities())
+        ent_in_kg = set([int(x) for x in self.entities()])
         for entity in entities:
-            if entity not in ent_in_kg:
+            if int(entity) not in ent_in_kg:
                 return False
         return True
 
