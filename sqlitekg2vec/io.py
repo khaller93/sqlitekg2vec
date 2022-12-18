@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from pykeen.triples import TriplesFactory
     from os import PathLike
 
-
 FilePath = Union[str, 'PathLike[str]']
 PyKeenTriplesFactory = Union['TriplesFactory', Sequence['TriplesFactory']]
 ColumnSelection = Tuple[Hashable, Hashable, Hashable]
@@ -55,7 +54,7 @@ class TSVReader:
 def open_from_pykeen_dataset(dataset: Union[str, 'Dataset'],
                              *,
                              combined: bool = False,
-                             db_file_path: str = 'tmp.db') -> SQLiteKG:
+                             **kwargs) -> SQLiteKG:
     """ constructs a new SQLiteKG instance from PyKeen dataset using the
     specified file path to persist the KG on disk. The PyKeen dataset can either
     be a name or a dataset instance.
@@ -64,7 +63,6 @@ def open_from_pykeen_dataset(dataset: Union[str, 'Dataset'],
     :param combined: `True`, if the whole dataset (training, testing and
     validation set) shall be used, or `False`, if only the training set shall be
     used. It is `False` per default.
-    :param db_file_path: path to the file that shall hold the KG on disk.
     :return: a new SQLiteKG instance for the given KG.
     """
     from pykeen.datasets import get_dataset
@@ -72,22 +70,18 @@ def open_from_pykeen_dataset(dataset: Union[str, 'Dataset'],
     ds = get_dataset(dataset=dataset) if isinstance(dataset, str) else dataset
     if combined:
         return open_from_triples_factory([ds.training, ds.testing,
-                                          ds.validation],
-                                         db_file_path=db_file_path)
+                                          ds.validation], **kwargs)
     else:
-        return open_from_triples_factory([ds.training],
-                                         db_file_path=db_file_path)
+        return open_from_triples_factory([ds.training], **kwargs)
 
 
 def open_from_triples_factory(triples_factories: PyKeenTriplesFactory,
-                              *,
-                              db_file_path: str = 'tmp.db') -> SQLiteKG:
+                              **kwargs) -> SQLiteKG:
     """ constructs a new SQLiteKG instance from PyKeen triples factories using
     the specified file path to persist the KG on disk. A PyKeen triples factory
     can either be a single instance or a sequence.
 
     :param triples_factories: a single instance or a sequence of triple factory.
-    :param db_file_path: path to the file that shall hold the KG on disk.
     :return: a new SQLiteKG instance for the given KG.
     """
 
@@ -100,14 +94,14 @@ def open_from_triples_factory(triples_factories: PyKeenTriplesFactory,
                     yield_triples.add(t)
                     yield t
 
-    return open(iterate(), db_file_path=db_file_path)
+    return open_from(iterate(), **kwargs)
 
 
 def open_from_tsv_file(f: Union[FilePath, 'TextIOWrapper'],
                        *,
                        skip_header: bool = False,
                        compression: str = None,
-                       db_file_path: str = 'tmp.db') -> SQLiteKG:
+                       **kwargs) -> SQLiteKG:
     """ constructs a new SQLiteKG instance from the given TSV file using the
     specified file path to persist the KG on disk.
 
@@ -115,7 +109,6 @@ def open_from_tsv_file(f: Union[FilePath, 'TextIOWrapper'],
     :param skip_header: if the header shall be skipped. `False` per default.
     :param compression: the compression type of the TSV source. `None` per
     default.
-    :param db_file_path: path to the file that shall hold the KG on disk.
     :return: a new SQLiteKG instance for the given KG.
     """
 
@@ -136,13 +129,13 @@ def open_from_tsv_file(f: Union[FilePath, 'TextIOWrapper'],
             except StopIteration:
                 pass
 
-    return open(iterate(), db_file_path=db_file_path)
+    return open_from(iterate(), **kwargs)
 
 
 def open_from_dataframe(data: 'DataFrame',
                         *,
                         column_names: ColumnSelection = (0, 1, 2),
-                        db_file_path: str = 'tmp.db') -> SQLiteKG:
+                        **kwargs) -> SQLiteKG:
     """ constructs a new SQLiteKG instance from the given pandas dataframe using
     the specified file path to persist the KG on disk.
 
@@ -151,7 +144,6 @@ def open_from_dataframe(data: 'DataFrame',
     :param column_names: the column name of subject, predicate and object in
     the given dataframe. It must be specified as a tuple (size 3) of strings or
     integers.
-    :param db_file_path: path to the file that shall hold the KG on disk.
     :return: a new SQLiteKG instance for the given KG.
     """
 
@@ -166,16 +158,25 @@ def open_from_dataframe(data: 'DataFrame',
                 t.append(str(row[column_names[i]]))
             yield t[0], t[1], t[2]
 
-    return open(iterate(), db_file_path=db_file_path)
+    return open_from(iterate(), **kwargs)
 
 
-def open(data: Iterable[Triple],
-         *,
-         db_file_path: str = 'tmp.db') -> SQLiteKG:
+def open_from(data: Iterable[Triple],
+              *,
+              skip_verify: bool = False,
+              skip_predicates: Iterable[str] = None,
+              cache_size: int = 4096,
+              db_file_path: str = 'tmp.db') -> SQLiteKG:
     """ constructs a new SQLiteKG instance with the given data using the
     specified file path to persist the KG on disk.
 
     :param data: an iterable sequence of triples representing the KG.
+    :param skip_verify: `False`, if it shall be checked whether the
+    specified list of entities (for training) are actually part of this
+    knowledge graph. Otherwise, it is `True`. It is `False` by default.
+    :param skip_predicates: a list of predicates, which makes all the
+    statements with one of these predicates to be ignored.
+    :param cache_size: size of the cache. It holds 4096 entries by default.
     :param db_file_path: path to the file that shall hold the KG on disk.
     :return: a new SQLiteKG instance for the given KG.
     """
@@ -188,4 +189,8 @@ def open(data: Iterable[Triple],
                     % len(t))
             yield t[0], t[1], t[2]
 
-    return SQLiteKG(data=iterate(), db_file_path=db_file_path)
+    return SQLiteKG(data=iterate(),
+                    skip_verify=skip_verify,
+                    skip_predicates=skip_predicates,
+                    cache_size=cache_size,
+                    db_file_path=db_file_path)

@@ -12,7 +12,7 @@ GRAPH = [
 
 @pytest.fixture
 def local_kg() -> SQLiteKG:
-    with sqlitekg2vec.open(GRAPH) as local_kg:
+    with sqlitekg2vec.open_from(GRAPH) as local_kg:
         yield local_kg
 
 
