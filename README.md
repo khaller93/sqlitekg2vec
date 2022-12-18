@@ -12,6 +12,22 @@ statements of a knowledge graph, and an additional table as an index of KG
 entity names to integer IDs. This SQLite database will be referenced as SQLite
 KG in the remaining documentation.
 
+## Installation
+
+The releases of this extension can by found in the [PyPi](https://pypi.org/project/sqlitekg2vec/),
+repository. This `sqlitekg2vec` package can easily be installed with `pip` or
+other package managers.
+
+```bash
+pip install sqlitekg2vec
+```
+
+**Requirements:**
+* Python 3.8 or 3.9
+
+The `gensim` package required by pyRDF2Vec might not install on Python
+distributions of version 3.10 and higher.
+
 ## Usage
 
 ```python
