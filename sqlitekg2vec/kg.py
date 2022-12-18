@@ -366,9 +366,9 @@ class SQLiteKG:
             remove(self._db_file_path)
         # import the KG
         self._con = connect(self._db_file_path)
-        logging.info('Importing statements into SQLite KG  with {'
+        logging.info('Importing statements into SQLite KG with {'
                      'skip_predicates: %s}, stored at the file "%s"'
-                     % (self._db_file_path, [x for x in self._skip_predicates]))
+                     % ([x for x in self._skip_predicates], self._db_file_path))
         with _Importer(self._con,
                        skip_predicates=self._skip_predicates) as importer:
             importer.import_kg(self._data)
