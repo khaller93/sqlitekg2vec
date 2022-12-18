@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "SQLiteKG implements the KG class from pyRDF2Vec by using a local SQLite database for storing and querying a KG."
 authors = ["Kevin Haller <contact@kevinhaller.dev>"]
 readme = "README.md"
-repository = "https://github.com/khaller93/pyrdf2vec-sqlitekg"
+repository = "https://github.com/khaller93/sqlitekg2vec"
 keywords = ["embeddings", "knowledge-graph", "rdf2vec", "word2vec", "sqlite"]
 include = [
     "LICENSE",
