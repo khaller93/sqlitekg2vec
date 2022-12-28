@@ -8,7 +8,7 @@ from typing import Iterable, Tuple, List, Set, Any, Sequence, Union
 
 from cachetools import cachedmethod, FIFOCache
 from cachetools.keys import hashkey
-from pyrdf2vec.typings import Hop, Literals, Entities, Embeddings
+from pyrdf2vec.typings import Hop, Literals, Embeddings
 from pyrdf2vec.graphs import Vertex
 
 EntityName = str
