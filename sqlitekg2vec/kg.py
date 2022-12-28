@@ -346,7 +346,7 @@ class SQLiteKG:
         walks; `2` debugging. It is `0` by default.
         :return: list that contains literals for each entity.
         """
-        logging.warning('SQLite KG doesn\'t support literals')
+        logging.warning('sqlitekg2vec doesn\'t support literals')
         return []
 
     def is_exist(self, entities: EntityIDs) -> bool:
@@ -368,15 +368,14 @@ class SQLiteKG:
         # import the KG
         self._con = connect(self._db_file_path)
         logging.info('Importing statements into SQLite KG with {'
-                     'skip_predicates: %s}, stored at the file "%s"'
-                     % ([x for x in self._skip_predicates], self._db_file_path))
+                     'skip_predicates: %s}, stored at the file "%s"',
+                     [x for x in self._skip_predicates], self._db_file_path)
         with _Importer(self._con,
                        skip_predicates=self._skip_predicates) as importer:
             importer.import_kg(self._data)
         logging.info('Imported KG with {entities:%d, predicates:%d, '
-                     'statements: %d}' % (self.entity_count,
-                                          self.predicate_count,
-                                          self.statement_count))
+                     'statements: %d}', self.entity_count, self.predicate_count,
+                     self.statement_count)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
