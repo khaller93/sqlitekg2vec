@@ -132,6 +132,8 @@ class _Importer:
 class SQLiteKG:
     """ represents a Knowledge Graph persisted in a SQLite database """
 
+    _is_remote = False
+
     def __init__(self, data: Iterable[Triple],
                  *,
                  skip_verify: bool = False,
@@ -157,10 +159,6 @@ class SQLiteKG:
         self._db_file_path = db_file_path
         self._cache = FIFOCache(maxsize=cache_size)
         self._con: Connection
-
-    @property
-    def _is_remote(self) -> bool:
-        return False
 
     @property
     def entity_count(self) -> int:
