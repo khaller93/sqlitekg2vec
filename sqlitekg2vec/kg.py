@@ -18,6 +18,52 @@ EntityIDs = List[EntityID]
 Triple = Tuple[EntityName, EntityName, EntityName]
 
 
+class _DBWriteCmd:
+    """ a class that maintains write commands for the SQLite database """
+    CREATE_RESOURCE_TABLE = '''
+CREATE TABLE resource(
+    resource_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    iri NOT NULL UNIQUE
+);'''
+    CREATE_STATEMENT_TABLE = '''
+CREATE TABLE statement(
+    no INTEGER PRIMARY KEY AUTOINCREMENT,
+    subj INTEGER NOT NULL,
+    pred INTEGER NOT NULL,
+    obj INTEGER NOT NULL,
+    FOREIGN KEY (subj) REFERENCES resource (resource_id),
+    FOREIGN KEY (pred) REFERENCES resource (resource_id),
+    FOREIGN KEY (obj) REFERENCES resource (resource_id),
+    UNIQUE(subj,pred,obj)
+); '''
+    INSERT_RESOURCE = 'INSERT INTO resource (iri) VALUES (?);'
+    INSERT_STATEMENT = '''
+INSERT INTO statement (subj, pred, obj) VALUES (?, ?, ?);
+'''
+
+
+class _DBQueryCmd:
+    """ a class that maintains query commands for the SQLite database """
+    ENTITIES_COUNT = '''
+SELECT count(*)
+FROM (SELECT subj as id FROM statement UNION SELECT obj as id FROM statement);
+'''
+    PREDICATES_COUNT = 'SELECT count(distinct pred) FROM statement;'
+    STATEMENT_COUNT_QUERY = 'SELECT count(*) FROM statement;'
+    ENTITY_ID_FROM_NAME = 'SELECT resource_id FROM resource WHERE iri = ?;'
+    ENTITY_NAME_FROM_ID = 'SELECT iri FROM resource WHERE resource_id = ?;'
+    ALL_ENTITIES = '''
+SELECT id, iri
+FROM (SELECT subj as id FROM statement UNION
+      SELECT obj as id FROM statement) entity
+JOIN resource ON entity.id = resource.resource_id;
+'''
+    FETCH_HOPS = {
+        'forward': 'SELECT pred, obj FROM statement WHERE subj = ?;',
+        'backward': 'SELECT pred, subj FROM statement WHERE obj = ?;'
+    }
+
+
 class _Importer:
     """ importer of KG into the SQLite database """
 
@@ -38,22 +84,8 @@ class _Importer:
 
     def _create_schema(self) -> None:
         """ creates the basic schema of the SQLite database. """
-        self._cursor.execute('''
-CREATE TABLE resource(
-    resource_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    iri NOT NULL UNIQUE
-);      ''')
-        self._cursor.execute('''
-CREATE TABLE statement(
-    no INTEGER PRIMARY KEY AUTOINCREMENT,
-    subj INTEGER NOT NULL,
-    pred INTEGER NOT NULL,
-    obj INTEGER NOT NULL,
-    FOREIGN KEY (subj) REFERENCES resource (resource_id),
-    FOREIGN KEY (pred) REFERENCES resource (resource_id),
-    FOREIGN KEY (obj) REFERENCES resource (resource_id),
-    UNIQUE(subj,pred,obj)
-);      ''')
+        self._cursor.execute(_DBWriteCmd.CREATE_RESOURCE_TABLE)
+        self._cursor.execute(_DBWriteCmd.CREATE_STATEMENT_TABLE)
 
     def _insert_entity(self, entity: EntityName) -> int:
         """ inserts the given entity into the database, if it doesn't already
@@ -66,8 +98,7 @@ CREATE TABLE statement(
         if entity in self._entity_map:
             return self._entity_map[entity]
         else:
-            self._cursor.execute('INSERT INTO resource (iri) VALUES (?);',
-                                 (entity,))
+            self._cursor.execute(_DBWriteCmd.INSERT_RESOURCE, (entity,))
             key = self._cursor.execute('SELECT last_insert_rowid();') \
                 .fetchone()[0]
             self._entity_map[entity] = int(key)
@@ -84,8 +115,7 @@ CREATE TABLE statement(
             subj_key = self._insert_entity(subj)
             pred_key = self._insert_entity(pred)
             obj_key = self._insert_entity(obj)
-            self._cursor.execute('INSERT INTO statement (subj, pred, obj) '
-                                 'VALUES (?, ?, ?);',
+            self._cursor.execute(_DBWriteCmd.INSERT_STATEMENT,
                                  (subj_key, pred_key, obj_key))
 
     def __enter__(self):
@@ -97,35 +127,6 @@ CREATE TABLE statement(
             if self._con is not None:
                 self._con.commit()
         self._entity_map = None
-
-
-class _QueryManager:
-    """ this class maintains SQL queries """
-
-    entity_id_query = 'SELECT resource_id FROM resource WHERE iri = ?;'
-
-    entity_name_query = 'SELECT iri FROM resource WHERE resource_id = ?;'
-
-    entities_count_query = '''
-SELECT count(*)
-FROM (SELECT subj as id FROM statement UNION SELECT obj as id FROM statement);
-'''
-
-    predicates_count_query = 'SELECT count(distinct pred) FROM statement;'
-
-    statements_count_query = 'SELECT count(*) FROM statement;'
-
-    all_entities_query = '''
-SELECT id, iri
-FROM (SELECT subj as id FROM statement UNION
-      SELECT obj as id FROM statement) entity
-JOIN resource ON entity.id = resource.resource_id;
-'''
-
-    hops_query = {
-        'forward': 'SELECT pred, obj FROM statement WHERE subj = ?;',
-        'backward': 'SELECT pred, subj FROM statement WHERE obj = ?;',
-    }
 
 
 class SQLiteKG:
@@ -166,7 +167,7 @@ class SQLiteKG:
         """ count of entities (occur as subject or object) in this KG. """
         cursor = self._con.cursor()
         try:
-            return int(cursor.execute(_QueryManager.entities_count_query)
+            return int(cursor.execute(_DBQueryCmd.ENTITIES_COUNT)
                        .fetchone()[0])
         finally:
             cursor.close()
@@ -176,7 +177,7 @@ class SQLiteKG:
         """ count of distinct predicates in the KG. """
         cursor = self._con.cursor()
         try:
-            return int(cursor.execute(_QueryManager.predicates_count_query)
+            return int(cursor.execute(_DBQueryCmd.PREDICATES_COUNT)
                        .fetchone()[0])
         finally:
             cursor.close()
@@ -186,7 +187,7 @@ class SQLiteKG:
         """ count of statements in the KG. """
         cursor = self._con.cursor()
         try:
-            return int(cursor.execute(_QueryManager.statements_count_query)
+            return int(cursor.execute(_DBQueryCmd.STATEMENT_COUNT_QUERY)
                        .fetchone()[0])
         finally:
             cursor.close()
@@ -200,7 +201,7 @@ class SQLiteKG:
         """
         cursor = self._con.cursor()
         try:
-            result = cursor.execute(_QueryManager.entity_id_query,
+            result = cursor.execute(_DBQueryCmd.ENTITY_ID_FROM_NAME,
                                     (entity_name,))
             entity_id_tp = result.fetchone()
             return None if entity_id_tp is None else str(entity_id_tp[0])
@@ -216,7 +217,7 @@ class SQLiteKG:
         """
         cursor = self._con.cursor()
         try:
-            result = cursor.execute(_QueryManager.entity_name_query,
+            result = cursor.execute(_DBQueryCmd.ENTITY_NAME_FROM_ID,
                                     (int(entity_id),))
             entity_name_tp = result.fetchone()
             return None if entity_name_tp is None else entity_name_tp[0]
@@ -234,7 +235,7 @@ class SQLiteKG:
         """
         cursor = self._con.cursor()
         try:
-            result = cursor.execute(_QueryManager.all_entities_query)
+            result = cursor.execute(_DBQueryCmd.ALL_ENTITIES)
             entities = [(str(row[0]), str(row[1])) for row in result]
             if restricted_to is None:
                 return [e[0] for e in entities]
@@ -259,7 +260,7 @@ class SQLiteKG:
                              'of embeddings')
         cursor = self._con.cursor()
         try:
-            result = cursor.execute(_QueryManager.all_entities_query)
+            result = cursor.execute(_DBQueryCmd.ALL_ENTITIES)
             entity_map = {int(row[0]): str(row[1]) for row in result}
             return [(entity_map[int(entityID)], embedding) for
                     entityID, embedding in zip(entities, embeddings)]
@@ -304,7 +305,7 @@ class SQLiteKG:
         cursor = self._con.cursor()
         try:
             link_type = 'backward' if is_reverse else 'forward'
-            query = _QueryManager.hops_query[link_type]
+            query = _DBQueryCmd.FETCH_HOPS[link_type]
             result = cursor.execute(query, (int(vertex.name),))
             hops = [hop for hop in self._parse_hops(vertex, result,
                                                     is_reverse)]
@@ -327,7 +328,7 @@ class SQLiteKG:
         cursor = self._con.cursor()
         try:
             link_type = 'backward' if is_reverse else 'forward'
-            query = _QueryManager.hops_query[link_type]
+            query = _DBQueryCmd.FETCH_HOPS[link_type]
             result = cursor.execute(query, (int(vertex.name),))
             return set([pred for pred, _ in self._parse_hops(vertex,
                                                              result,
