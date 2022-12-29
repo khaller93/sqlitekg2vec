@@ -9,12 +9,12 @@ local/remote triplestore.
 
 sqlitekg2vec creates a local SQLite database with a single big table for all the
 statements of a knowledge graph, and an additional table as an index of KG
-entity names to integer IDs. This SQLite database will be referenced as SQLite
-KG in the remaining documentation.
+entity names to integer IDs. This SQLite database will be referenced to as 
+SQLite KG in the remaining documentation.
 
 ## Installation
 
-The releases of this extension can by found in the [PyPi](https://pypi.org/project/sqlitekg2vec/),
+The releases of this extension can by found in the [PyPi](https://pypi.org/project/sqlitekg2vec/)
 repository. This `sqlitekg2vec` package can easily be installed with `pip` or
 other package managers.
 
@@ -23,10 +23,7 @@ pip install sqlitekg2vec
 ```
 
 **Requirements:**
-* Python 3.8 or 3.9
-
-The `gensim` package required by pyRDF2Vec might not install on Python
-distributions of version 3.10 and higher.
+* Python 3.8 or higher (Python 3.9 recommended)
 
 ## Usage
 
@@ -130,6 +127,13 @@ with sqlitekg2vec.open_from_dataframe(df, column_names=(
   integer or string. The first entry of the tuple shall point to the subject,
   the second to the predicate, and the third one to the object. `(0, 1, 2)` are
   the default indices.
+
+## Limitations:
+
+This implementation has two limitations.
+
+1) **Literals** are ignored by this implementation for now.
+2) **Inverse traversal** isn't working properly. The walker might get stuck.
 
 ## Contact
 
