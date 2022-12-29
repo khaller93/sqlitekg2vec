@@ -4,7 +4,7 @@ import gzip
 from io import TextIOWrapper
 from typing import TYPE_CHECKING, Iterable, Sequence, Union, Tuple, Hashable
 
-from sqlitekg2vec.kg import SQLiteKG
+from sqlitekg2vec.kg import SQLiteKG, AutoLoadableSQLiteKG
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -189,8 +189,6 @@ def open_from(data: Iterable[Triple],
                     % len(t))
             yield t[0], t[1], t[2]
 
-    return SQLiteKG(data=iterate(),
-                    skip_verify=skip_verify,
-                    skip_predicates=skip_predicates,
-                    cache_size=cache_size,
-                    db_file_path=db_file_path)
+    return AutoLoadableSQLiteKG(iterate(), db_file_path,
+                                skip_verify=skip_verify,
+                                skip_predicates=skip_predicates)
