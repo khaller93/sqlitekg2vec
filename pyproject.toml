@@ -17,11 +17,10 @@ python = ">=3.8,<4.0"
 pyrdf2vec = ">=0.2.3"
 nest_asyncio = "^1.5.4"
 gensim = "^4.0.1"
-cachetools = ">=4.2,<5"
 aiohttp = "^3.8.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.2"
+pytest = "^7.2"
 pykeen = "^1.9"
 pandas = ">=1.5"
 
