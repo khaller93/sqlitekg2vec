@@ -286,7 +286,7 @@ class SQLiteKG:
         walks; `2` debugging. It is `0` by default.
         :return: list that contains literals for each entity.
         """
-        logging.warning('sqlitekg2vec doesn\'t support literals')
+        logging.warning('Library "sqlitekg2vec" doesn\'t support literals')
         return []
 
     def is_exist(self, entities: EntityIDs) -> bool:
