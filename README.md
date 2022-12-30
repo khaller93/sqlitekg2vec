@@ -130,10 +130,11 @@ with sqlitekg2vec.open_from_dataframe(df, column_names=(
 
 ## Limitations:
 
-This implementation has two limitations.
+This implementation has three limitations.
 
 1) **Literals** are ignored by this implementation for now.
 2) **Inverse traversal** isn't working properly. The walker might get stuck.
+3) **Samplers** (besides the default one) might not work properly.
 
 ## Contact
 
