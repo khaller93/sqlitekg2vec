@@ -92,10 +92,17 @@ class SQLiteKG:
         self._con = None
 
     @property
+    def _readonly_db_uri(self):
+        """ gets an SQLite URI with read-only mode for connecting to the
+        specified database. """
+        return self._db_uri + '?mode=ro'
+
+    @property
     def connection(self):
         """ gets the connection to the SQLite KG database. """
         if self._con is None:
-            self._con = connect(self._db_uri, uri=True)
+            self._con = connect(self._readonly_db_uri,
+                                uri=True)
         return self._con
 
     @property
