@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sqlitekg2vec"
-version = "0.1.0"
+version = "0.2.0"
 description = "SQLiteKG implements the KG class from pyRDF2Vec by using a local SQLite database for storing and querying a KG."
 authors = ["Kevin Haller <contact@kevinhaller.dev>"]
 readme = "README.md"
